@@ -28,14 +28,17 @@ def connect_wifi():
             
         except ValueError:
             pass
-
-    # Handle connection error
-    
-    if wlan.status() != 3:
-        raise RuntimeError('network connection failed')
-    else:
-        print('connected')
-        status = wlan.ifconfig()
-        print( 'ip = ' + status[0] )
         
-connect_wifi()
+    max_wait = 10
+    while max_wait > 0:
+        if wlan.status() != 3:
+            print ("Waiting for network")
+            time.sleep(1)
+            max_wait -=1
+            if max_wait == 0:
+                print ("Connection time out")
+        else:
+            print('connected')
+            status = wlan.ifconfig()
+            print( 'ip = ' + status[0] )
+            max_wait = 0 # ends while loop
