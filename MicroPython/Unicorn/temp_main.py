@@ -1,6 +1,5 @@
 # Main code for running on the Galactic unicorn
 
-import multiwifi
+import scroll
 
-if (multiwifi.checkWifiStatus() == False): #if wifi isn't already connected connect it
-    multiwifi.connect()
+scroll.textToScroll("Wifi Connected")
