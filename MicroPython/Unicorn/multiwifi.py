@@ -15,7 +15,7 @@ def connect():
     for x in scanResult:
         availNetworks.append(x[0].decode('UTF-8'))
     
-    #print(availNetworks)
+    print(availNetworks)
     
     ssidFound = False
     ssidIndex = []
@@ -31,8 +31,7 @@ def connect():
             break
         
     if ssidFound:
-        print("Known SSID found ... connecting")
-        #print(ssidToUse[0], ssidToUse[1])
+        print("Known SSID found ... connecting to ", ssidToUse[0])
         wlan.connect(ssidToUse[0], ssidToUse[1])
         max_wait = 20
         while max_wait > 0:
@@ -56,3 +55,7 @@ def checkWifiStatus():
         return(False)
     else:
         return(True)
+    
+def getIP():
+    status = wlan.ifconfig()
+    return( status[0] )

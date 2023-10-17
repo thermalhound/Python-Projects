@@ -22,8 +22,16 @@ BACKGROUND_COLOUR = (10, 0, 96)
 #MESSAGE = "\"Space is big. Really big. You just won't believe how vastly hugely mind-bogglingly big it is. I mean, you may think it's a long way down the road to the chemist, but that's just peanuts to space.\" - Douglas Adams"
 HOLD_TIME = 2.0
 STEP_TIME = 0.075
+    
+# state constants
+STATE_PRE_SCROLL = 0
+STATE_SCROLLING = 1
+STATE_POST_SCROLL = 2
 
 gu.set_brightness(0.5)
+
+# set the font
+graphics.set_font("bitmap8")
 
 # function for drawing outlined text
 def outline_text(text, x, y):
@@ -41,24 +49,19 @@ def outline_text(text, x, y):
     graphics.text(text, x, y, -1, 1)
 
 def textToScroll(message):
-
-    # state constants
-    STATE_PRE_SCROLL = 0
-    STATE_SCROLLING = 1
-    STATE_POST_SCROLL = 2
-
+    
+    #print("Text to scroll")
     shift = 0
     state = STATE_PRE_SCROLL
-
-    # set the font
-    graphics.set_font("bitmap8")
 
     # calculate the message width so scrolling can happen
     msg_width = graphics.measure_text(message, 1)
 
     last_time = time.ticks_ms()
+    
+    scrolling = True
 
-    while True:
+    while scrolling:
         time_ms = time.ticks_ms()
 
         if gu.is_pressed(GalacticUnicorn.SWITCH_BRIGHTNESS_UP):
@@ -82,6 +85,10 @@ def textToScroll(message):
             state = STATE_PRE_SCROLL
             shift = 0
             last_time = time_ms
+            #graphics.clear()
+            #gu.update(graphics)
+            scrolling = False
+            return
 
         graphics.set_pen(graphics.create_pen(int(BACKGROUND_COLOUR[0]), int(BACKGROUND_COLOUR[1]), int(BACKGROUND_COLOUR[2])))
         graphics.clear()
