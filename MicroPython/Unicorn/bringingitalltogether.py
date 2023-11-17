@@ -1,33 +1,3 @@
-"""
-
-Micropython code for the Pimoroni Galactic Unicorn
-
-Building on top of the supplied demo clock code this version now
-adds several features:
-
-* ability to connect to multiple known networks with ssid and pwd in a secrets file
-* drawDisplay passes string to either a static or scrolling function depending on
-  string length
-* connects to various APIs to display various information at different times, with
-  the schedule for displaying and accessing the APIs set in the cycles.py file
-
-To Do ...
-
-* Decide what local weather parts I want to see and write the string generator,
-  then remove the 'pass' from the if statement so the local weather is actually
-  displayed
-* Add an alarm function that sends a push notification (link in secrets.py working)
-  if the river height gets to a certain level
-* Add calendar events to display to replace the 'facts' section. The googlecal.py
-  file has basic functionality but needs better parsing
-* Add button monitoring so I can display things on press instead of having to wait.
-  A headline replay button would be good. To facilitate move the headline increment
-  function to the start rather than the end (so then if replaying the index is
-  already correct)
-* Better code comments (ha ha ha!!)
-
-"""
-
 import time
 import math
 import machine

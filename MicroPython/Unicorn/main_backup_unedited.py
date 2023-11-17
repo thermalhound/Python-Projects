@@ -19,10 +19,16 @@ import time
 import math
 import machine
 import network
-import multiwifi
 import ntptime
 from galactic import GalacticUnicorn
 from picographics import PicoGraphics, DISPLAY_GALACTIC_UNICORN as DISPLAY
+
+try:
+    from secrets import WIFI_SSID, WIFI_PASSWORD
+    wifi_available = True
+except ImportError:
+    print("Create secrets.py with your WiFi credentials to get time from NTP")
+    wifi_available = False
 
 
 # constants for controlling the background colour throughout the day
@@ -50,17 +56,6 @@ height = GalacticUnicorn.HEIGHT
 # set up some pens to use later
 WHITE = graphics.create_pen(255, 255, 255)
 BLACK = graphics.create_pen(0, 0, 0)
-gu.set_brightness(0.5)
-
-# We use the IRQ method to detect the button presses to avoid incrementing/decrementing
-# multiple times when the button is held.
-utc_offset = 0
-
-up_button = machine.Pin(GalacticUnicorn.SWITCH_VOLUME_UP, machine.Pin.IN, machine.Pin.PULL_UP)
-down_button = machine.Pin(GalacticUnicorn.SWITCH_VOLUME_DOWN, machine.Pin.IN, machine.Pin.PULL_UP)
-
-year, month, day, wd, hour, minute, second, _ = rtc.datetime()
-last_second = second
 
 
 @micropython.native  # noqa: F821
@@ -126,15 +121,49 @@ def outline_text(text, x, y):
 
 # Connect to wifi and synchronize the RTC time from NTP
 def sync_time():
-    
-    try:
-        ntptime.settime()
-        print("Time set")
-    except OSError:
-        pass
+    if not wifi_available:
+        return
+
+    # Start connection
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    wlan.connect(WIFI_SSID, WIFI_PASSWORD)
+
+    # Wait for connect success or failure
+    max_wait = 100
+    while max_wait > 0:
+        if wlan.status() < 0 or wlan.status() >= 3:
+            break
+        max_wait -= 1
+        print('waiting for connection...')
+        time.sleep(0.2)
+
+        redraw_display_if_reqd()
+        gu.update(graphics)
+
+    if max_wait > 0:
+        print("Connected")
+
+        try:
+            ntptime.settime()
+            print("Time set")
+        except OSError:
+            pass
+
+    wlan.disconnect()
+    wlan.active(False)
+
 
 # NTP synchronizes the time to UTC, this allows you to adjust the displayed time
 # by one hour increments from UTC by pressing the volume up/down buttons
+#
+# We use the IRQ method to detect the button presses to avoid incrementing/decrementing
+# multiple times when the button is held.
+utc_offset = 0
+
+up_button = machine.Pin(GalacticUnicorn.SWITCH_VOLUME_UP, machine.Pin.IN, machine.Pin.PULL_UP)
+down_button = machine.Pin(GalacticUnicorn.SWITCH_VOLUME_DOWN, machine.Pin.IN, machine.Pin.PULL_UP)
+
 
 def adjust_utc_offset(pin):
     global utc_offset
@@ -142,9 +171,16 @@ def adjust_utc_offset(pin):
         utc_offset += 1
     if pin == down_button:
         utc_offset -= 1
-        
+
+
 up_button.irq(trigger=machine.Pin.IRQ_FALLING, handler=adjust_utc_offset)
 down_button.irq(trigger=machine.Pin.IRQ_FALLING, handler=adjust_utc_offset)
+
+
+year, month, day, wd, hour, minute, second, _ = rtc.datetime()
+
+last_second = second
+
 
 # Check whether the RTC time has changed and if so redraw the display
 def redraw_display_if_reqd():
@@ -179,10 +215,8 @@ def redraw_display_if_reqd():
 
         last_second = second
 
-while multiwifi.checkWifiStatus() == False:
-    print("Wifi not connected")
-    #draw.textToScroll("No Network Connected")
-    multiwifi.connect()
+
+gu.set_brightness(0.5)
 
 sync_time()
 

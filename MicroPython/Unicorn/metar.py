@@ -4,8 +4,8 @@ import secrets
 def getMetar(airport):
     
     url = ("https://api.checkwx.com/metar/" + airport + "?x-api-key=" + secrets.checkWxAPI)
-    #print(url)
+    print('Getting weather')
     checkWx = urequests.get(url)
-    #print(checkWx)
+    print('Formatting weather')
     metar = checkWx.json()['data']
     return(str(metar).strip("[']"))
