@@ -25,6 +25,12 @@ To Do ...
   function to the start rather than the end (so then if replaying the index is
   already correct)
 * Better code comments (ha ha ha!!)
+* Deal with bad API responses from openweathermap, newsdata.io, api-ninjas and
+  checkwx
+* Change the scrolling text code so that it returns to the main loop in between
+  display updates?
+* Move apiChecked and displayCycleChecked to their own functions so make the main
+  loop easier to read
 
 """
 
@@ -39,8 +45,7 @@ import cycles
 from galactic import GalacticUnicorn
 from picographics import PicoGraphics, DISPLAY_GALACTIC_UNICORN as DISPLAY
 
-# initial variables
-
+# initial variables and constants
 
 # constants for controlling the background colour throughout the day
 MIDDAY_HUE = 1.1
@@ -54,6 +59,8 @@ hue = 0
 sat = 0
 val = 0
 
+# constants for display / graphics
+
 PADDING = 5
 HOLD_TIME = 2.0
 STEP_TIME = 0.055
@@ -61,16 +68,9 @@ STATE_PRE_SCROLL = 0
 STATE_SCROLLING = 1
 STATE_POST_SCROLL = 2
 
-aqiState = {1 : "Good", 2 : "Fair", 3 : "Moderate", 4 : "Poor", 5 : "Very Poor"}
-
 # create galactic object and graphics surface for drawing
 gu = GalacticUnicorn()
 graphics = PicoGraphics(DISPLAY)
-
-# create the rtc object
-rtc = machine.RTC()
-year, month, day, wd, hour, minute, second, _ = rtc.datetime()
-last_second = second
 
 width = GalacticUnicorn.WIDTH
 height = GalacticUnicorn.HEIGHT
@@ -82,8 +82,17 @@ BLACK = graphics.create_pen(0, 0, 0)
 gu.set_brightness(0.5)
 graphics.set_font("bitmap8")
 
+# air quality state returns a number so this translates to actual condition
+aqiState = {1 : "Good", 2 : "Fair", 3 : "Moderate", 4 : "Poor", 5 : "Very Poor"}
+
+# create the rtc object
+rtc = machine.RTC()
+year, month, day, wd, hour, minute, second, _ = rtc.datetime()
+last_second = second
+
 @micropython.native  # noqa: F821
 def from_hsv(h, s, v):
+
     i = math.floor(h * 6.0)
     f = h * 6.0 - i
     v *= 255.0
@@ -107,6 +116,7 @@ def from_hsv(h, s, v):
     
 # function for drawing a gradient background
 def gradient_background(start_hue, start_sat, start_val, end_hue, end_sat, end_val):
+
     half_width = width // 2
     for x in range(0, half_width):
         hue = ((end_hue - start_hue) * (x / half_width)) + start_hue
@@ -125,6 +135,9 @@ def gradient_background(start_hue, start_sat, start_val, end_hue, end_sat, end_v
 
 # function for drawing outlined text
 def outline_text(text, x, y):
+
+    # Draw the background based on spacing around the letters, ie. remove the gradient background that has aleary been drawn
+    # Format is graphics.text(text, x co-ord, y co-ord, max line width, scale)
     graphics.set_pen(BLACK)
     graphics.text(text, x - 1, y - 1, -1, 1)
     graphics.text(text, x, y - 1, -1, 1)
@@ -136,7 +149,7 @@ def outline_text(text, x, y):
     graphics.text(text, x + 1, y + 1, -1, 1)
     graphics.rectangle(x-1, y, graphics.measure_text(text, 1) + 1, 7)
     graphics.rectangle(x, y-1, graphics.measure_text(text, 1) - 1, 9)
-
+    # Set pen to white and now write the actual text to the graphics object
     graphics.set_pen(WHITE)
     graphics.text(text, x, y, -1, 1)
 
@@ -150,47 +163,46 @@ def connect():
     
     scanResult = wlan.scan()
     availNetworks = []
+    ssidFound = False
     
-    # list all the available SSIDs so they can be checked against the known list
+    # List all the available SSIDs so they can be checked against the known list
     for x in scanResult:
         availNetworks.append(x[0].decode('UTF-8'))
     
-    print(availNetworks)
-    
-    ssidFound = False
-    #ssidIndex = []
-    
-    for seenSSIDs in availNetworks: # check scanned list against known list and if a match is found add it to a variable and break
-        for knownSSIDs in secrets.knownNetworks:
+    # Check scanned list against known list and if a match is found add it to a variable and break
+    for seenSSIDs in availNetworks: # Iterates through the number of seen SSIDs
+        for knownSSIDs in secrets.knownNetworks: # Iterates through the list of known SSIDs
             ssidToCheck = knownSSIDs[0]
-            if ssidToCheck in seenSSIDs:
-                ssidToUse = knownSSIDs
-                ssidFound = True
+            if ssidToCheck in seenSSIDs: # Checks if current iteration of known SSID is present in the list of ones seen
+                ssidToUse = knownSSIDs # Sets the SSID name we know AND can see into this variable
+                ssidFound = True # Drives the next if statement to break out of for loop
                 break
         if ssidFound:
             break
-        
+    
+    # If we found an SSID that matches we now attempt a connection
     if ssidFound:
-        drawDisplay("Known SSID found ... connecting to " + ssidToUse[0])
-        wlan.connect(ssidToUse[0], ssidToUse[1])
+        drawDisplay("Known SSID found ... connecting to " + ssidToUse[0]) # Just for debug info but also can see when Wifi has dropped out etc
+        wlan.connect(ssidToUse[0], ssidToUse[1]) # ssidToUse will contain but the SSID and Password at the 0 and 1 index respectively
         max_wait = 20
         while max_wait > 0:
-            if wlan.status() != 3:
+            if wlan.status() != 3: # Status other than 3 suggests no connection has been made
                 print ("Waiting for network")
                 time.sleep(1)
                 max_wait -=1
                 if max_wait == 0:
                     drawDisplay("Connection time out")
-            else:
+            else: # Status 3 means connection is established
                 status = wlan.ifconfig()
-                print( 'ip = ' + status[0] ) #just outputting to serial as seems overkill to send to display but could be useful debug
-                max_wait = 0 # ends while loop
+                print( 'ip = ' + status[0] ) # Just outputting to serial as seems overkill to send to display but could be useful debug
+                max_wait = 0 # Ends while loop
     else:
         drawDisplay("No Known SSIDs found")
         
 #function to check if the wifi is connected
 def checkWifiStatus():
     
+    # Status 3 means Wifi is connected
     if wlan.status() != 3:
         return(False)
     else:
@@ -198,10 +210,13 @@ def checkWifiStatus():
     
 #function to rerurn the current IP address
 def getIP():
+    
     status = wlan.ifconfig()
     return( status[0] )
 
 def getLocalWeather():
+    
+    # Get current weather conditions from openweathermap and format the return JSON object
     url = (f'https://api.openweathermap.org/data/3.0/onecall?lat={secrets.latitude}&lon={secrets.longitude}&units=metric&exclude=minutely,hourly&appid={secrets.openWeatherAPI}')
     response = urequests.get(url)
     data = response.json()
@@ -226,7 +241,7 @@ def getLocalWeather():
     alerts_data = data.get('alerts', [])
     alerts_present = bool(alerts_data)
 
-    #return a dict of values
+    #Return a dict of all values collected
     return {
         'current_temperature': current_temperature,
         'dew_point': dew_point,
@@ -242,19 +257,26 @@ def getLocalWeather():
     }
 
 def getAirQuality():
+
+    # Also using the openweathermap api, but a different end point to the main data, to get the current air quality
     url = (f'http://api.openweathermap.org/data/2.5/air_pollution?lat={secrets.latitude}&lon={secrets.longitude}&appid={secrets.openWeatherAPI}')
     response = urequests.get(url)
     aqiData = response.json()
+    # Extract the value from the returned data
     aqiValue = aqiData['list'][0]['main']['aqi']
     return(aqiValue)
 
 #function to get a random fact
 def getFact():
+
     response = urequests.get('https://api.api-ninjas.com/v1/facts?limit=1', headers={'X-Api-Key': secrets.apiNinjasKey})
     fact = response.json()
     return(fact[0]['fact'])
 
+#function to get a random "Dad Joke"
 def getDadJoke():
+
+    # Use the api-ninjas api to get a random "Dad Joke"
     response = urequests.get('https://api.api-ninjas.com/v1/dadjokes?limit=1', headers={'X-Api-Key': secrets.apiNinjasKey})
     joke = response.json()
     return(joke[0]['joke'])
@@ -262,52 +284,59 @@ def getDadJoke():
 #function to get the METAR of a supplied airport from the checkWx api
 def getMetar(airport):
     
+    # Use the checkwx api to get the METAR for a supplied airport
     url = (f"https://api.checkwx.com/metar/{airport}?x-api-key={secrets.checkWxAPI}")
-    #print('Getting weather')
     checkWx = urequests.get(url)
-    #print('Formatting weather')
     metar = checkWx.json()['data']
     return(str(metar).strip("[']"))
 
 # function to get the latest bbc headlines from the newsdataio api
 def getNews():
+
+    # Use the newsdataio api to get the latest 5 headlines, no content, from the BBC in English
     newsUrl = (f'https://newsdata.io/api/1/news?apikey={secrets.newsdataioKey}&domain=bbc&full_content=0&image=0&video=0&size=5&language=en')
     response = urequests.get(newsUrl)
     headlines = response.json()
     topStories = []
-    for story in headlines['results']:
+    for story in headlines['results']: # Create a list of the headlines to be returned
         topStories.append(story['title'])
     return(topStories)
 
 #function to get the latest river level from the environment agency at a certain station
 def getRiverLevel():
+
+    # Use the environment agency API to retrieve the current river level
     try:
         response = urequests.get(secrets.river_url)
 
-        if response.status_code == 200:
+        if response.status_code == 200: # Code 200 means success
             data = response.json()
             
             # Extract the value from the JSON response
             latest_reading = data.get("items", {}).get("latestReading")
             if latest_reading:
                 value = latest_reading.get("value")
-                if value is not None:
+
+                if value is not None: # Resonse valid and has a value for river height
                     #urequests.post(secrets.pushsafer_url)
                     #Use above call to send push notification when river level is above threshold value
                     return(value)
-                else:
+                
+                else: # Response valid but no value found
                     print("Value not found in the response.")
-            else:
+
+            else: # Response valid but no value present
                 print("Latest reading data not found in the response.")
 
-        else:
+        else: # Response invalid
             print(f"Failed to retrieve data. Status code: {response.status_code}")
 
-    except urequests.exceptions.RequestException as e:
+    except urequests.exceptions.RequestException as e: # Some other failure
         print(f"Error: {e}")
         
 #function to synchronize the RTC time from NTP
 def syncTime():
+    
     try:
         ntptime.settime()
         print("Time set")
@@ -317,17 +346,22 @@ def syncTime():
 
 #function to update the rtc variables
 def updateTime():
+    
+    # Need to call regularly to update the time variables
     global year, month, day, wd, hour, minute, second, last_second
     year, month, day, wd, hour, minute, second, _ = rtc.datetime()
     
 #function to calculate the % to midday for the grad backgrond feature
 def percentToMid():
+
     time_through_day = (((hour * 60) + minute) * 60) + second
     percent_through_day = time_through_day / 86400
     percent_to_midday = 1.0 - ((math.cos(percent_through_day * math.pi * 2) + 1) / 2)
     return(percent_to_midday)
 
+#function to calculate the hue, sat and val global values
 def gradBackgroundColours():
+
     global hue, sat, val
     percent_to_midday = percentToMid()
     hue = ((MIDDAY_HUE - MIDNIGHT_HUE) * percent_to_midday) + MIDNIGHT_HUE
@@ -336,20 +370,26 @@ def gradBackgroundColours():
 
 #fuction to draw to the display
 def drawDisplay(message):
+
+    # Need to first work out if message is too long to be static
     messageWidth = graphics.measure_text(message, 1)
     
+    # Decide whether to send to static display or scroll functions
     if messageWidth <= (width - 2): #message does not need to scroll
-        #set background
+        
+        # Set background
         gradBackgroundColours()
         gradient_background(hue, sat, val, hue + HUE_OFFSET, sat, val)
-        #work out where to start the text in x position so it is centered
+        # Work out where to start the text in x position so it is centered
         xPos = int(width / 2 - messageWidth / 2 + 1)
         outline_text(message, xPos, 2) #y position is always 2 with the bitmap8 font
         gu.update(graphics)
+
     else:
         #message is longer than display so needs to scroll
         textToScroll(message)
         
+#function for drawing scrolling text on the display
 def textToScroll(message):
     
     #print("Text to scroll")
@@ -358,12 +398,13 @@ def textToScroll(message):
 
     # calculate the message width so scrolling can happen
     msg_width = graphics.measure_text(message, 1)
-
     last_time = time.ticks_ms()
-    
     scrolling = True
 
     while scrolling:
+
+        # Modified from the Pimoroni example code so that it can work with a gradient background
+        # rather than a fixed colour one
         time_ms = time.ticks_ms()
 
         if state == STATE_PRE_SCROLL and time_ms - last_time > HOLD_TIME * 1000:
@@ -381,8 +422,6 @@ def textToScroll(message):
             state = STATE_PRE_SCROLL
             shift = 0
             last_time = time_ms
-            #graphics.clear()
-            #gu.update(graphics)
             scrolling = False
             return
 
@@ -395,9 +434,8 @@ def textToScroll(message):
 
         # pause for a moment (important or the USB serial device will fail)
         time.sleep(0.001)
-        
-#if gu.is_pressed(GalacticUnicorn.SWITCH_A):
 
+#function for drawing the clock and current temp on the display
 def drawClock():
     clock = "{:02}:{:02}z".format(hour, minute)
     tempDisplay = ("{:.{}f}".format(localWx['current_temperature'], 0) + chr(176))
@@ -410,9 +448,11 @@ def drawClock():
     outline_text(tempDisplay, width - (xSpace + tempWidth) + 2, 2)
     gu.update(graphics)
 
+#connect to wifi before main loop can begin
 while checkWifiStatus() == False:
     connect()
 
+#sync the time with ntp
 if checkWifiStatus() == True:
     syncTime()
 
@@ -486,5 +526,5 @@ while True:# main loop
                 drawDisplay(joke)
             else:
                 print('Unknown number in displayCycle. Check cycles.py file')
-        drawClock()
+        drawClock() # Need to draw clock again once the other information has been displayed
         displayCycleChecked = True
